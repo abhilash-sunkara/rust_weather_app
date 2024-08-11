@@ -3,6 +3,7 @@ use reqwest::Client;
 use tokio;
 use std::io::{self, Write};
 use weather_forecasting::weather_request::WeatherRequest;
+use weather_forecasting::json_writer::LocationJSON;
 
 
 #[tokio::main]
@@ -12,12 +13,20 @@ async fn main() {
     let mut input:String = String::new();
     let mut split_words: Vec<&str> = input.trim().split_whitespace().collect();
     let mut forecaster = WeatherRequest::new();
+    let mut database = LocationJSON::new().unwrap();
     while prompt {
         input.clear();
         io::stdin().read_line(&mut input).expect("Failed to read line");
         split_words = input.trim().split_whitespace().collect();
         if split_words.len() < 1 { continue }
         match split_words[0] {
+            "add_location" => {database.add_location(split_words[1], split_words[2], split_words[3]); let _ = database.save_to_json();}
+            "get_location" => {database.get_locations()}
+            "switch_location" => {
+                if database.contains_location(split_words[1]) {
+                    forecaster.update_location(database.get_lat(split_words[1]), database.get_lon(split_words[1])).await
+                }
+            }
             "update" => {forecaster.update_location(split_words[1], split_words[2]).await}
             "location" => {forecaster.get_location().await}
             "day" => {forecaster.get_is_day().await}
