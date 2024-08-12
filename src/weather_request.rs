@@ -35,6 +35,19 @@ impl WeatherRequest{
         println!("grid id : {}", self.grid_id);
     }
 
+    pub fn get_grid_x(&self) -> &str {
+        self.grid_x.as_str()
+    }
+
+    pub fn get_grid_y(&self) -> &str {
+        self.grid_y.as_str()
+    }
+
+    pub fn get_grid_id(&self) -> &str {
+        self.grid_id.as_str()
+    }
+
+
     pub async fn get_is_day(&self){
         let response = self.client.get("https://api.weather.gov/gridpoints/".to_owned()+ &*self.grid_id +"/"+&*self.grid_x+","+&*self.grid_y+"/forecast").header("User-Agent", "reqwest").send().await.unwrap().text().await.unwrap();
         let response_json = json::parse(&*response).unwrap();
@@ -42,11 +55,13 @@ impl WeatherRequest{
         println!("{}", response_json["properties"]["periods"][self.time_period]["isDaytime"]);
     }
 
-    pub async fn get_temperature(&self){
+    pub async fn get_temperature(&self) -> String{
+        let temp_time_period : usize = self.time_period.clone();
         let response = self.client.get("https://api.weather.gov/gridpoints/".to_owned()+ &*self.grid_id +"/"+&*self.grid_x+","+&*self.grid_y+"/forecast").header("User-Agent", "reqwest").send().await.unwrap().text().await.unwrap();
-        let response_json = json::parse(&*response).unwrap();
+        let mut response_json = json::parse(&*response).unwrap();
         //println!("{}", response_json["properties"]["periods"][0]["temperature"]);
-        println!("{}", response_json["properties"]["periods"][self.time_period]["temperature"].to_string());
+        //println!("{}", response_json["properties"]["periods"][self.time_period]["temperature"].to_string());
+        return response_json["properties"]["periods"][temp_time_period]["temperature"].to_string()
     }
 
     pub async fn get_json(&self){
@@ -55,16 +70,20 @@ impl WeatherRequest{
         println!("{}", response_json["properties"]["periods"]);
     }
 
-    pub async fn get_short_forecast(&self){
+    pub async fn get_short_forecast(&self) -> String{
+        let temp_time_period : usize = self.time_period.clone();
         let response = self.client.get("https://api.weather.gov/gridpoints/".to_owned()+ &*self.grid_id +"/"+&*self.grid_x+","+&*self.grid_y+"/forecast").header("User-Agent", "reqwest").send().await.unwrap().text().await.unwrap();
         let response_json = json::parse(&*response).unwrap();
-        println!("{}", response_json["properties"]["periods"][self.time_period]["shortForecast"]);
+        //println!("{}", response_json["properties"]["periods"][self.time_period]["shortForecast"]);
+        return response_json["properties"]["periods"][temp_time_period]["shortForecast"].to_string()
     }
 
-    pub async fn get_detailed_forecast(&self){
+    pub async fn get_detailed_forecast(&self) -> String{
+        let temp_time_period : usize = self.time_period.clone();
         let response = self.client.get("https://api.weather.gov/gridpoints/".to_owned()+ &*self.grid_id +"/"+&*self.grid_x+","+&*self.grid_y+"/forecast").header("User-Agent", "reqwest").send().await.unwrap().text().await.unwrap();
-        let response_json = json::parse(&*response).unwrap();
-        println!("{}", response_json["properties"]["periods"][self.time_period]["detailedForecast"]);
+        let mut response_json = json::parse(&*response).unwrap();
+        //println!("{}", response_json["properties"]["periods"][self.time_period]["detailedForecast"]);
+        return response_json["properties"]["periods"][temp_time_period]["detailedForecast"].to_string()
     }
 
     pub fn increment_time_period(&mut self){
