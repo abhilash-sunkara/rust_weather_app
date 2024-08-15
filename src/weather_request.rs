@@ -64,10 +64,12 @@ impl WeatherRequest{
         return response_json["properties"]["periods"][temp_time_period]["temperature"].to_string()
     }
 
+
+
     pub async fn get_json(&self){
         let response = self.client.get("https://api.weather.gov/gridpoints/".to_owned()+ &*self.grid_id +"/"+&*self.grid_x+","+&*self.grid_y+"/forecast").header("User-Agent", "reqwest").send().await.unwrap().text().await.unwrap();
         let response_json = json::parse(&*response).unwrap();
-        println!("{}", response_json["properties"]["periods"]);
+        //println!("{}", response_json["properties"]["periods"]);
     }
 
     pub async fn get_short_forecast(&self) -> String{
@@ -89,9 +91,9 @@ impl WeatherRequest{
     pub fn increment_time_period(&mut self){
         if self.time_period < 13 {
             self.time_period += 1;
-            println!("Time period is now at {}", self.time_period);
+            //println!("Time period is now at {}", self.time_period);
         } else {
-            println!("Time period unable to be incremented");
+            //println!("Time period unable to be incremented");
         }
 
     }
@@ -99,9 +101,9 @@ impl WeatherRequest{
     pub fn decrement_time_period(&mut self){
         if self.time_period > 0 {
             self.time_period -= 1;
-            println!("Time period is now at {}", self.time_period);
+            //println!("Time period is now at {}", self.time_period);
         } else {
-            println!("Time period unable to be decremented");
+            //println!("Time period unable to be decremented");
         }
     }
 }
