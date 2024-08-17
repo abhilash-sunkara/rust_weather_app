@@ -1,3 +1,4 @@
+
 use reqwest::Client;
 
 pub struct WeatherRequest {
@@ -105,5 +106,15 @@ impl WeatherRequest{
         } else {
             //println!("Time period unable to be decremented");
         }
+    }
+
+    pub async fn get_all_temps(&mut self) -> Vec<(f64, f64)> {
+        let mut all_temps: Vec<(f64, f64)> = vec!();
+        for i in 0..12 as usize {
+            let response = self.client.get("https://api.weather.gov/gridpoints/".to_owned()+ &*self.grid_id +"/"+&*self.grid_x+","+&*self.grid_y+"/forecast").header("User-Agent", "reqwest").send().await.unwrap().text().await.unwrap();
+            let mut response_json = json::parse(&*response).unwrap();
+            all_temps.push((i as f64, response_json["properties"]["periods"][i.clone()]["temperature"].to_string().parse::<f64>().unwrap_or(0 as f64)))
+        }
+        all_temps
     }
 }

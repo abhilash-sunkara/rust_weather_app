@@ -1,19 +1,31 @@
-
+use std::collections::HashSet;
 use reqwest::Client;
 use tokio;
 use std::io::{self, stdout, Write};
 use ratatui::{
     crossterm::{
-        event::{self, Event, KeyCode},
+        event::{self, Event, KeyCode, KeyEventKind},
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
         ExecutableCommand,
     },
     prelude::*,
     widgets::*,
+    style::Stylize
 };
+
+use winapi::um::wincon::{ENABLE_EXTENDED_FLAGS, ENABLE_VIRTUAL_TERMINAL_INPUT};
+use winapi::um::winbase::{STD_INPUT_HANDLE};
+
+
 use weather_forecasting::weather_request::WeatherRequest;
 use weather_forecasting::json_writer::LocationJSON;
 use std::time::{Duration, Instant};
+
+
+
+use ratatui::symbols::Marker;
+use winapi::um::consoleapi::SetConsoleMode;
+use winapi::um::processenv::GetStdHandle;
 
 struct WeatherData {
     grid_x : String,
@@ -22,14 +34,20 @@ struct WeatherData {
     temperature : String,
     short_forecast : String,
     detailed_forecast : String,
+    all_temps : Vec<(f64, f64)>
 }
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
+
+
+
+
+
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
-    let mut last_key_time: Option<Instant> = None;
+    let mut last_key_time: Instant = Instant::now();
     let mut last_key_code: Option<KeyCode> = None;
 
     let mut forecaster = WeatherRequest::new();
@@ -38,7 +56,7 @@ async fn main() -> io::Result<()> {
     //forecaster.get_location().await;
 
     let mut input = String::new();
-
+    let mut pressed_keys: HashSet<KeyCode> = HashSet::new();
     let mut should_quit = false;
     while !should_quit {
         let weather_data = WeatherData{
@@ -47,10 +65,14 @@ async fn main() -> io::Result<()> {
             grid_id: forecaster.get_grid_id().to_string(),
             temperature : forecaster.get_temperature().await,
             short_forecast : forecaster.get_short_forecast().await,
-            detailed_forecast : forecaster.get_detailed_forecast().await
+            detailed_forecast : forecaster.get_detailed_forecast().await,
+            all_temps : forecaster.get_all_temps().await
         };
+
+        should_quit = handle_events(&mut input, &mut forecaster, &mut database, &mut last_key_time).await?;
+
         terminal.draw(|frame| ui(frame, &weather_data, input.as_str()))?;
-        should_quit = handle_events(&mut input, &mut last_key_time, &mut last_key_code, &mut forecaster, &mut database).await?;
+
     }
 
     disable_raw_mode()?;
@@ -93,33 +115,38 @@ async fn main() -> io::Result<()> {
 
 }
 
-async fn handle_events(input: &mut String, last_key_time: &mut Option<Instant>, last_key_code: &mut Option<KeyCode>, forecaster: &mut WeatherRequest, database: &mut LocationJSON) -> io::Result<bool> {
-    if event::poll(std::time::Duration::from_millis(1))? {
+async fn handle_events(input: &mut String, forecaster: &mut WeatherRequest, database: &mut LocationJSON, last_event_time: &mut Instant) -> io::Result<bool> {
+
+    let debounce_duration = Duration::from_millis(2000);
+
+    if Instant::now().duration_since(*last_event_time) < debounce_duration {
+        return Ok(false); // Exit if debounce time has not passed
+    }
+
+    if event::poll(std::time::Duration::from_millis(5))? {
         if let Event::Key(key) = event::read()? {
-            let now = Instant::now();
-            let debounce_time = Duration::from_millis(200);
-            if Some(key.code) != *last_key_code || last_key_time.map_or(true, |t| now.duration_since(t) > debounce_time) {
                 match key.code {
                     KeyCode::Char(c) => {
                         input.push(c);
+                        //println!("ran char");
                     }
                     KeyCode::Backspace => {
                         input.pop();
                     }
                     KeyCode::Enter => {
                         // Process the input when Enter is pressed
+                        //println!("ran enter");
                         process_command(&input, forecaster, database).await;
                         input.clear(); // Clear the input buffer
                     }
                     KeyCode::Esc => {
+                        //println!("ran esc");
                         return Ok(true);// Exit on Esc key press
                     }
-                    _ => {}
-                }
+                    _ => {
 
-                *last_key_code = Some(key.code.clone());
-                *last_key_time = Some(now);
-            }
+                    }
+                }
         }
     }
     Ok(false)
@@ -130,12 +157,37 @@ fn ui(frame: &mut Frame, weather_data: &WeatherData, input : &str){
     let areas = Layout::default().direction(Direction::Vertical).margin(1).constraints([Constraint::Fill(1), Constraint::Length(5)].as_ref()).split(frame.area());
     let forecast_split = Layout::default().direction(Direction::Horizontal).margin(1).constraints([Constraint::Percentage(40), Constraint::Percentage(60)].as_ref()).split(areas[0]);
     let loc_split = Layout::default().direction(Direction::Vertical).margin(1).constraints([Constraint::Fill(1), Constraint::Length(5)].as_ref()).split(forecast_split[0]);
-
+    let chart_split = Layout::default().direction(Direction::Vertical).margin(1).constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref()).split(forecast_split[1]);
     let forecast_area = loc_split[0];
     let location_area = loc_split[1];
     let terminal_area = areas[1];
-    let location_json_area = forecast_split[1];
+    let location_json_area = chart_split[0];
+    let chart_area = chart_split[1];
 
+    let dataset = Dataset::default()
+        .data(&*weather_data.all_temps)
+        .marker(Marker::Braille)
+        .graph_type(GraphType::Line)
+        .green();
+
+    let x_axis = Axis::default()
+        .title(ratatui::prelude::Stylize::white("Time"))
+        .style(Style::default().white())
+        .bounds([0.0, 12.0])
+        .labels(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]);
+
+
+
+    let y_axis = Axis::default()
+        .title(ratatui::prelude::Stylize::white("Temperature"))
+        .style(Style::default().white())
+        .bounds([0.0, 100.0])
+        .labels(["0.0", "25.0", "50.0", "75.0", "100.0"]);
+
+    let chart = Chart::new(vec![dataset])
+        .block(Block::new().title("Temperature vs Time"))
+        .x_axis(x_axis)
+        .y_axis(y_axis);
 
     let forecast_text = vec![
         Line::from(Span::styled(
@@ -176,11 +228,16 @@ fn ui(frame: &mut Frame, weather_data: &WeatherData, input : &str){
     let forecast = Paragraph::new(Text::from(forecast_text)).wrap(Wrap{trim : true}).block(Block::default().title("Forecast").borders(Borders::ALL));
     frame.render_widget(forecast, forecast_area);
 
-    let location_json = Paragraph::new("Hello World").block(Block::default().title("Greeting").borders(Borders::ALL));
+    let location_json = Paragraph::new("Location").block(Block::default().title("JSON").borders(Borders::ALL));
     frame.render_widget(location_json, location_json_area);
+
+
+    frame.render_widget(chart, chart_area);
 
     let location = Paragraph::new(Text::from(grid_location_text)).wrap(Wrap{trim : false}).block(Block::default().title("Location").borders(Borders::ALL));
     frame.render_widget(location, location_area);
+
+
 
 
     frame.render_widget(terminal_widget, terminal_area)
